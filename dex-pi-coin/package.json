@@ -1,23 +1,24 @@
 {
   "name": "dex-pi-coin",
   "version": "1.0.0",
-  "description": "A decentralized exchange for PiCoin on the Stellar blockchain",
+  "description": "A decentralized exchange for PiCoin stablecoin on Stellar blockchain",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
     "start:dev": "nodemon server.js",
     "deploy:stellar": "node scripts/deploy.js",
     "interact:stellar": "node scripts/interact.js",
-    "soroban:deploy": "soroban contract deploy --source-account deployer --rpc-url $STELLAR_SOROBAN_RPC_URL --network $STELLAR_NETWORK",
+    "soroban:build": "cd contracts && cargo build --target wasm32-unknown-unknown --release",
+    "soroban:deploy": "soroban contract deploy --source-account deployer --rpc-url $STELLAR_SOROBAN_RPC_URL --network $STELLAR_NETWORK --wasm contracts/target/wasm32-unknown-unknown/release/PiCoin.wasm",
     "test": "mocha test --recursive --exit",
     "test:contracts": "mocha test/contracts --recursive --exit",
     "lint": "eslint . --ext .js",
     "lint:fix": "eslint . --ext .js --fix",
-    "format": "prettier --write \"**/*.js\"",
+    "format": "prettier --write \"**/*.{js,rs}\"",
     "frontend:setup": "mkdir -p frontend && cd frontend && npm init -y && npm install",
     "frontend": "cd frontend && npm start",
     "frontend:build": "cd frontend && npm run build",
-    "clean": "rm -rf frontend/build deployed-addresses.json logs/*.log"
+    "clean": "rm -rf frontend/build deployed-addresses.json logs/*.log contracts/target"
   },
   "repository": {
     "type": "git",
