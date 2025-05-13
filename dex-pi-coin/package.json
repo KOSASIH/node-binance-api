@@ -1,0 +1,59 @@
+{
+  "name": "dex-pi-coin",
+  "version": "1.0.0",
+  "description": "A decentralized exchange for PiCoin on the Stellar blockchain",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "start:dev": "nodemon server.js",
+    "deploy:stellar": "node scripts/deploy.js",
+    "interact:stellar": "node scripts/interact.js",
+    "soroban:deploy": "soroban contract deploy --source-account deployer --rpc-url $STELLAR_SOROBAN_RPC_URL --network $STELLAR_NETWORK",
+    "test": "mocha test --recursive --exit",
+    "test:contracts": "mocha test/contracts --recursive --exit",
+    "lint": "eslint . --ext .js",
+    "lint:fix": "eslint . --ext .js --fix",
+    "format": "prettier --write \"**/*.js\"",
+    "frontend:setup": "mkdir -p frontend && cd frontend && npm init -y && npm install",
+    "frontend": "cd frontend && npm start",
+    "frontend:build": "cd frontend && npm run build",
+    "clean": "rm -rf frontend/build deployed-addresses.json logs/*.log"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/KOSASIH/node-binance-api.git",
+    "directory": "dex-pi-coin"
+  },
+  "author": "KOSASIH",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/KOSASIH/node-binance-api/issues"
+  },
+  "homepage": "https://github.com/KOSASIH/node-binance-api/tree/main/dex-pi-coin#readme",
+  "dependencies": {
+    "@stellar/stellar-sdk": "^10.0.0",
+    "axios": "^1.6.0",
+    "cors": "^2.8.5",
+    "dotenv": "^16.0.3",
+    "express": "^4.18.2",
+    "express-rate-limit": "^6.7.0",
+    "jsonwebtoken": "^9.0.0",
+    "mongoose": "^7.0.0",
+    "redis": "^4.6.5",
+    "winston": "^3.8.2",
+    "ws": "^8.12.0"
+  },
+  "devDependencies": {
+    "chai": "^4.3.7",
+    "eslint": "^8.56.0",
+    "eslint-config-prettier": "^9.1.0",
+    "eslint-plugin-prettier": "^5.1.3",
+    "mocha": "^10.2.0",
+    "nodemon": "^3.0.1",
+    "prettier": "^3.2.5",
+    "soroban-cli": "^0.8.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
