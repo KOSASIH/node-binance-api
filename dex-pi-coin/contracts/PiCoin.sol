@@ -1,140 +1,114 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.0;
 
-contract StableCoin {
-    string public name = "Pi Coin";
-    string public symbol = "PI";
-    uint8 public decimals = 18;
-    uint256 public totalSupply;
-    mapping(address => uint256) public balanceOf;
-    mapping(address => mapping(address => uint256)) public allowance;
-    address public owner;
+import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
+import "@openzeppelin/contracts/access/Ownable.sol";
+import "@openzeppelin/contracts/security/Pausable.sol";
+import "@openzeppelin/contracts/utils/math/SafeMath.sol";
+import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
 
-    event Transfer(address indexed from, address indexed to, uint256 value);
-    event Approval(address indexed owner, address indexed spender, uint256 value);
-    event Mint(address indexed to, uint256 value);
-    event Burn(address indexed from, uint256 value);
+contract PiCoin is ERC20, Ownable, Pausable, ReentrancyGuard {
+    using SafeMath for uint256;
 
-    constructor() {
-        owner = msg.sender; // Set the contract creator as the owner
-        totalSupply = 100000000000 * 10 ** uint256(decimals); // Total supply set to 100 billion
-        balanceOf[owner] = totalSupply; // Assign total supply to the contract creator
+    // Total supply of Pi Coin
+    uint256 private constant TOTAL_SUPPLY = 100000000000 * 10**decimals(); // 100 billion tokens
+    // Target price in USD
+    uint256 public constant TARGET_PRICE = 314159 * 10**18; // $314,159 in wei
+    // Price feed address (to be set with a real oracle)
+    address public priceFeed;
+
+    // Transaction fee (in basis points, e.g., 100 = 1%)
+    uint256 public transactionFee = 100; // 1% fee
+    // Total fees collected
+    uint256 public totalFeesCollected;
+
+    // Events
+    event PriceFeedUpdated(address indexed newPriceFeed);
+    event TransactionFeeUpdated(uint256 newFee);
+    event FeesCollected(uint256 amount);
+    event SupplyAdjusted(uint256 newSupply);
+
+    constructor() ERC20("PiCoin", "PI") {
+        _mint(msg.sender, TOTAL_SUPPLY);
     }
 
-    function transfer(address to, uint256 value) public returns (bool success) {
-        require(balanceOf[msg.sender] >= value, "Insufficient balance");
-        balanceOf[msg.sender] -= value;
-        balanceOf[to] += value;
-        emit Transfer(msg.sender, to, value);
-        return true;
+    // Function to set the price feed address
+    function setPriceFeed(address _priceFeed) external onlyOwner {
+        priceFeed = _priceFeed;
+        emit PriceFeedUpdated(_priceFeed);
     }
 
-    function approve(address spender, uint256 value) public returns (bool success) {
-        allowance[msg.sender][spender] = value;
-        emit Approval(msg.sender, spender, value);
-        return true;
+    // Function to get the current price of Pi Coin from the oracle
+    function getCurrentPrice() public view returns (uint256) {
+        // This function should call the price feed to get the current price
+        // For demonstration, we will return a placeholder value
+        // In a real implementation, you would integrate with an oracle like Chainlink
+        return TARGET_PRICE; // Placeholder for actual price fetching logic
     }
 
-    function transferFrom(address from, address to, uint256 value) public returns (bool success) {
-        require(balanceOf[from] >= value, "Insufficient balance");
-        require(allowance[from][msg.sender] >= value, "Allowance exceeded");
-        balanceOf[from] -= value;
-        balanceOf[to] += value;
-        allowance[from][msg.sender] -= value;
-        emit Transfer(from, to, value);
-        return true;
+    // Function to adjust supply based on current price
+    function adjustSupply() external onlyOwner {
+        uint256 currentPrice = getCurrentPrice();
+        if (currentPrice < TARGET_PRICE) {
+            // Mint additional tokens to stabilize the price
+            uint256 amountToMint = (TARGET_PRICE - currentPrice).div(1e18).mul(1000); // Example logic
+            _mint(msg.sender, amountToMint);
+            emit SupplyAdjusted(amountToMint);
+        } else if (currentPrice > TARGET_PRICE) {
+            // Burn tokens to stabilize the price
+            uint256 amountToBurn = (currentPrice - TARGET_PRICE).div(1e18).mul(1000); // Example logic
+            _burn(msg.sender, amountToBurn);
+            emit SupplyAdjusted(amountToBurn);
+        }
     }
 
-    function mint(address to, uint256 value) public onlyOwner {
-        totalSupply += value;
-        balanceOf[to] += value;
-        emit Mint(to, value);
+    // Function to mint new tokens (only owner)
+    function mint(address to, uint256 amount) external onlyOwner {
+        _mint(to, amount);
     }
 
-    function burn(uint256 value) public {
-        require(balanceOf[msg.sender] >= value, "Insufficient balance to burn");
-        balanceOf[msg.sender] -= value;
-        totalSupply -= value;
-        emit Burn(msg.sender, value);
+    // Function to burn tokens (only owner)
+    function burn(uint256 amount) external onlyOwner {
+        _burn(msg.sender, amount);
     }
 
-    modifier onlyOwner() {
-        require(msg.sender == owner, "Not the contract owner");
-        _;
-    }
-}
-
-contract LiquidityPool {
-    mapping(address => uint256) public liquidity;
-    event LiquidityAdded(address indexed provider, uint256 amount);
-    event LiquidityRemoved(address indexed provider, uint256 amount);
-
-    function addLiquidity(uint256 amount) public {
-        require(amount > 0, "Amount must be greater than zero");
-        liquidity[msg.sender] += amount;
-        emit LiquidityAdded(msg.sender, amount);
+    // Function to pause all token transfers (only owner)
+    function pause() external onlyOwner {
+        _pause();
     }
 
-    function removeLiquidity(uint256 amount) public {
-        require(liquidity[msg.sender] >= amount, "Insufficient liquidity");
-        liquidity[msg.sender] -= amount;
-        emit LiquidityRemoved(msg.sender, amount);
+    // Function to unpause all token transfers (only owner)
+    function unpause() external onlyOwner {
+        _unpause();
     }
 
-    function autoLiquidityManagement() public {
-        // Implement automated liquidity management logic here
-    }
-}
-
-contract PriceOracle {
-    uint256 public currentPrice = 314159; // Set initial price to $314,159
-    address public owner;
-
-    event PriceUpdated(uint256 newPrice);
-
-    constructor() {
-        owner = msg.sender;
+    // Override transfer functions to include pause functionality and transaction fees
+    function _beforeTokenTransfer(address from, address to, uint256 amount) internal whenNotPaused override {
+        super._beforeTokenTransfer(from, to, amount);
+        if (from != address(0) && to != address(0)) { // Not a mint or burn
+            uint256 fee = amount.mul(transactionFee).div(10000); // Calculate fee
+            uint256 amountAfterFee = amount.sub(fee);
+            totalFeesCollected = totalFeesCollected .add(fee);
+            _transfer(from, to, amountAfterFee);
+            _transfer(from, address(this), fee); // Transfer fee to the contract
+            emit FeesCollected(fee);
+        }
     }
 
-    function updatePrice(uint256 newPrice) public onlyOwner {
-        currentPrice = newPrice;
-        emit PriceUpdated(newPrice);
+    // Function to withdraw collected fees (only owner)
+    function withdrawFees() external onlyOwner {
+        uint256 amount = totalFeesCollected;
+        totalFeesCollected = 0;
+        payable(msg.sender).transfer(amount);
     }
 
-    function getPrice() public view returns (uint256) {
-        return currentPrice;
+    // Function to update the transaction fee (only owner)
+    function updateTransactionFee(uint256 newFee) external onlyOwner {
+        require(newFee <= 1000, "Fee cannot exceed 10%");
+        transactionFee = newFee;
+        emit TransactionFeeUpdated(newFee);
     }
 
-    modifier onlyOwner() {
-        require(msg.sender == owner, "Not the contract owner");
-        _;
-    }
-}
-
-contract Governance {
-    address public owner;
-    mapping(address => bool) public isAdmin;
-    event AdminAdded(address indexed admin);
-    event AdminRemoved(address indexed admin);
-
-    constructor() {
-        owner = msg.sender;
-    }
-
-    function addAdmin(address admin) public onlyOwner {
-        require(!isAdmin[admin], "Admin already exists");
-        isAdmin[admin] = true;
-        emit AdminAdded(admin);
-    }
-
-    function removeAdmin(address admin) public onlyOwner {
-        require(isAdmin[admin], "Admin does not exist");
-        isAdmin[admin] = false;
-        emit AdminRemoved(admin);
-    }
-
-    modifier onlyOwner() {
-        require(msg.sender == owner, "Not the contract owner");
-        _;
-    }
+    // Fallback function to receive ETH
+    receive() external payable {}
 }
