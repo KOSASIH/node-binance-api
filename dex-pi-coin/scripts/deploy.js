@@ -1,126 +1,61 @@
-const hre = require("hardhat");
-const fs = require("fs");
-const path = require("path");
-const { ethers } = require("ethers");
-const logger = require("../utils/logger"); // Shared logger
+const { Server, Keypair, TransactionBuilder, Operation, Asset, Networks } = require('stellar-sdk');
+const fs = require('fs');
+const path = require('path');
+const { execSync } = require('child_process');
+const logger = require('../utils/logger');
 
 async function main() {
-  // Get network and signer
-  const [deployer] = await hre.ethers.getSigners();
-  const networkName = hre.network.name;
-  const deployerAddress = await deployer.getAddress();
-  logger.info(`Deploying contracts to ${networkName} with account: ${deployerAddress}`);
+  const server = new Server(process.env.STELLAR_HORIZON_URL);
+  const keypair = Keypair.fromSecret(process.env.STELLAR_SECRET_KEY);
+  const issuerAddress = keypair.publicKey(); // Starts with 'G'
+  logger.info(`Deploying with issuer: ${issuerAddress}`);
 
-  // Deployment configuration
-  const config = {
-    piCoin: {
-      name: "PiCoin",
-      symbol: "PICOIN",
-      initialSupply: ethers.utils.parseEther("1000000"), // 1M tokens
-    },
-    dex: {
-      fee: 30, // 0.3% fee (30 basis points)
-    },
-    liquidityPool: {
-      tokenA: null, // Set after PiCoin deployment
-      tokenB: ethers.constants.AddressZero, // ETH (or WETH for non-Ethereum chains)
-    },
-  };
+  // Build contracts
+  logger.info('Building contracts...');
+  execSync('npm run soroban:build', { stdio: 'inherit' });
 
   // Deploy PiCoin
-  logger.info("Deploying PiCoin...");
-  const PiCoin = await hre.ethers.getContractFactory("PiCoin");
-  const piCoin = await PiCoin.deploy(
-    config.piCoin.name,
-    config.piCoin.symbol,
-    config.piCoin.initialSupply
-  );
-  await piCoin.deployed();
-  logger.info(`PiCoin deployed to: ${piCoin.address}`);
+  logger.info('Deploying PiCoin contract...');
+  const piCoinContractId = execSync(
+    `soroban contract deploy --source-account deployer --rpc-url ${process.env.STELLAR_SOROBAN_RPC_URL} --network ${process.env.STELLAR_NETWORK} --wasm contracts/target/wasm32-unknown-unknown/release/PiCoin.wasm`,
+    { encoding: 'utf8' }
+  ).trim();
+  logger.info(`PiCoin contract deployed: ${piCoinContractId}`);
 
   // Deploy DEX
-  logger.info("Deploying DEX...");
-  const DEX = await hre.ethers.getContractFactory("DEX");
-  const dex = await DEX.deploy(config.dex.fee);
-  await dex.deployed();
-  logger.info(`DEX deployed to: ${dex.address}`);
+  logger.info('Deploying DEX contract...');
+  const dexContractId = execSync(
+    `soroban contract deploy --source-account deployer --rpc-url ${process.env.STELLAR_SOROBAN_RPC_URL} --network ${process.env.STELLAR_NETWORK} --wasm contracts/target/wasm32-unknown-unknown/release/DEX.wasm`,
+    { encoding: 'utf8' }
+  ).trim();
+  logger.info(`DEX contract deployed: ${dexContractId}`);
 
-  // Set tokenA for LiquidityPool (PiCoin)
-  config.liquidityPool.tokenA = piCoin.address;
+  // Initialize contracts (simplified; requires Soroban SDK calls)
+  // TODO: Call PiCoin.initialize and DEX.initialize
 
-  // Deploy LiquidityPool (PiCoin-ETH pair)
-  logger.info("Deploying LiquidityPool...");
-  const LiquidityPool = await hre.ethers.getContractFactory("LiquidityPool");
-  const liquidityPool = await LiquidityPool.deploy(
-    config.liquidityPool.tokenA,
-    config.liquidityPool.tokenB,
-    dex.address
-  );
-  await liquidityPool.deployed();
-  logger.info(`LiquidityPool (PiCoin-ETH) deployed to: ${liquidityPool.address}`);
-
-  // Initialize DEX with LiquidityPool
-  logger.info("Initializing DEX with LiquidityPool...");
-  const tx = await dex.addPool(piCoin.address, ethers.constants.AddressZero, liquidityPool.address);
-  await tx.wait();
-  logger.info("DEX initialized with PiCoin-ETH pool");
-
-  // Save deployed addresses
+  // Save addresses
   const addresses = {
-    network: networkName,
-    deployer: deployerAddress,
-    PiCoin: piCoin.address,
-    DEX: dex.address,
-    LiquidityPool: liquidityPool.address,
-    timestamp: new Date().toISOString(),
+    network: process.env.STELLAR_NETWORK,
+    issuerAddress,
+    piCoinAssetCode: process.env.PICOIN_ASSET_CODE,
+    piCoinContractId,
+    dexContractId,
   };
-  const outputPath = path.join(__dirname, "../deployed-addresses.json");
-  fs.writeFileSync(outputPath, JSON.stringify(addresses, null, 2));
-  logger.info(`Deployed addresses saved to ${outputPath}`);
+  fs.writeFileSync(path.join(__dirname, '../deployed-addresses.json'), JSON.stringify(addresses, null, 2));
+  logger.info('Deployed addresses saved');
 
-  // Verify contracts on Etherscan (if not local network)
-  if (networkName !== "hardhat" && networkName !== "localhost") {
-    try {
-      logger.info("Verifying contracts on Etherscan...");
-      await hre.run("verify:verify", {
-        address: piCoin.address,
-        constructorArguments: [
-          config.piCoin.name,
-          config.piCoin.symbol,
-          config.piCoin.initialSupply,
-        ],
-      });
-      await hre.run("verify:verify", {
-        address: dex.address,
-        constructorArguments: [config.dex.fee],
-      });
-      await hre.run("verify:verify", {
-        address: liquidityPool.address,
-        constructorArguments: [
-          config.liquidityPool.tokenA,
-          config.liquidityPool.tokenB,
-          dex.address,
-        ],
-      });
-      logger.info("Contracts verified on Etherscan");
-    } catch (error) {
-      logger.error("Etherscan verification failed:", error.message);
-    }
-  }
-
-  // Log final instructions
-  logger.info("Deployment complete! Update your .env files with the following:");
   console.log(`
-    REACT_APP_PICOIN_ADDRESS=${piCoin.address}
-    REACT_APP_ETH_ADDRESS=${ethers.constants.AddressZero}
-    REACT_APP_DEX_ADDRESS=${dex.address}
-    REACT_APP_PICOIN_ETH_POOL_ADDRESS=${liquidityPool.address}
+    Update .env with:
+    PICOIN_ISSUER_ADDRESS=${issuerAddress}
+    PICOIN_SOROBAN_CONTRACT_ID=${piCoinContractId}
+    DEX_SOROBAN_CONTRACT_ID=${dexContractId}
+    REACT_APP_PICOIN_ISSUER_ADDRESS=${issuerAddress}
+    REACT_APP_PICOIN_SOROBAN_CONTRACT_ID=${piCoinContractId}
+    REACT_APP_DEX_SOROBAN_CONTRACT_ID=${dexContractId}
   `);
 }
 
-main()
-  .then(() => process.exit(0))
-  .catch((error) => {
-    logger.error("Deployment failed:", error);
-    process.exit(1);
-  });
+main().catch((error) => {
+  logger.error('Deployment failed:', error);
+  process.exit(1);
+});
